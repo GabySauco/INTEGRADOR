@@ -1,122 +1,139 @@
-const express = require ('express');
-const {connectToMongoDB, disconnectFromMongoDB} = require('./src/mongodb.js');
+const express = require('express');
+const { connectToMongoDB, disconnectFromMongoDB } = require('./src/mongodb.js');
 require('dotenv').config();
 
 const app = express();
-process.loadEnvFile();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3008;
 
-// Middleware
-app.use ((req,res,next)=>{
-  res.header("Content-Type", "application/json; chartset=utf-8");
-  next()
+// Middleware para parsear JSON
+app.use(express.json());
+
+// Ruta principal
+app.get('/', (req, res) => {
+  res.send('¡Bienvenido a la API de prendas!');
 });
 
-//Ruta principal
-app.get('/', (req,res) => {
-    res.send ('Bienvenido a la API de prendas!')
-});
+// Obtener todas las prendas
+app.get('/prendas', async (req, res) => {
+  const client= await connectToMongoDB ()
+  if (!client){
+    res.status (500).send ('Error al conectarse a la BD')
+  }
+  try{
+    const db = client.db ('prendasDB')
+    const prendas = await db.collection ('prendas').find().toArray()
+    res.json (prendas)
+    } catch (error){
+      res.status(500).send('Error al obtener las prendas')
+    } finally {
+      await disconnectFromMongoDB()
+    }
+  })
 
-//obtener todas las prendas
-app.get('/prendas', async(req,res) => {
-    const client = await connectToMongoDB()
-})
-try{
- const db = client.db('prendasdb')
- const prendas =  await db.colletion('prendas').find().toArray()
- res.json(prendas)
- await disconnectFromMongoDB(client)
-} catch (error){
-   res.status(500).send('Error al obtener las prendas')
-} finally {
-  await disconnectFromMongoDB(client)
-}
-
-//Obtener una prenda por ID
-app.get('/prendas/:id', async(req,res) => {
+// Filtrar prendas por nombre (búsqueda parcial)
+app.get('/prendas/:id', async (req, res) => {
   const client = await connectToMongoDB()
-  if(!client){
-    res.status(500).send('Error al conectarse a la BD');
+  if (!client) {
+    res.status(500).send('Error al conectarse a la BD')
   }
-})
-try{
-const prendaId= parseInt(req.params.id)||0
-const db = client.db('prendasdb');
-const prenda =  await db.colletion('prendas').findOne({id:prendaId})
-if (prenda) {
-  res.json(prenda);
-} else {
-  res.status(404).send('No se encontro la prenda con id ${prendaId}')
-}
-await disconnectFromMongoDB(client);
-} catch (error){
- res.status(500).send('Error al obtener la prenda')
-} finally {
-await disconnectFromMongoDB(client);
-}
-
-//Filtrar prendas por nombre (búsqueda parcial)
-app.get('/prendas/buscar/:nombre', async (req, res) => {
   try {
-    const client = await connectToMongoDB();
-    const db = client.db('prendasdb');
-    const nombre = req.params.nombre;
-    const prendas = await db.collection('prendas').find({ nombre: { $regex: nombre, $options: 'i' } }).toArray();
-    res.json(prendas)
-await disconnectFromMongoDB(client);
-  } catch (error) {
-    res.status(500).send(error.toString())
-  }
-});
-
-//Crear un nuevo producto
-app.post('/prendas', async (req, res) => {
-  const nuevaPrenda = req.body
-  if (nuevaPrenda === undefined){
-    res.status(400).send('Error al crear nuevo producto')
-  }
-    const client = await connectToMongoDB()
-    if (!client){
-      res.status(500).send('Error al conectarse a MongoDB')
-    }
-   const collection= client.db('prendasdb').collection('prendas')
-    collection.insertOne(nuevaPrenda)
-    .then(()=>{
-      console.log('Nueva prenda creada')
-      res.status(201).send(nuevaPrenda)
-    })
-   .catch (error => {
-    console.error(error)
-    await disconnectFromMongoDB(client);
-}) 
-})
-  
-
-
-
-
-//Eliminar una prenda
-app.delete('/prendas/:id', async (req, res) => {
-  try {
-    const client = await connectToMongoDB()
-    const db = client.db('prendasdb')
-    const result = await db.collection('prendas').deleteOne({_id: new ObjectId(req.params.id)})
-    if (result.deletedCount > 0) {
-      res.send('Prenda eliminada')
+    const prendaId = parseInt(req.params.id) || 0
+    const db = client.db('prendasDB')
+    const prenda = await db.collection('prendas').findOne({ id: prendaId })
+    if (prenda) {
+      res.json(prenda)
     } else {
-      res.status(404).send('Prenda no encontrada')
+      res.status(404).send(`No se encontro la prenda con id ${prendaId}`)
     }
-    await client.close()
   } catch (error) {
-    res.status(500).send(error.toString())
+    res.status(500).send('Error al obtener la prenda')
+  } finally {
+    await disconnectFromMongoDB()
   }
 })
 
-
-// Inicializamos el servidor
-app.listen(port, () => {
- console.log('Ejemplo app listen http://localhost:${port}')
- connectToMongoDB()
+// Crear una nueva prenda
+app.post('/prendas', async (req, res) => {
+  const nuevaPrenda = req.body;
+  if (nuevaPrenda===undefined) {
+    res.status(400).send ('Error en el formato de datos a crear ')
+    const client = await connectToMongoDB()
+    if(!client){
+      res.status(500).send('Error al conectarse a MongoDB')
+}
+  const collection = client.db ('prendasDB').collection ('prendas')
+  collection.insertOne(nuevaPrenda)
+  .then(()=>{
+   conseole.log ('Nueva prenda creada')
+   res.status(201).send(nuevaPrenda)
+  })
+  .catch(error =>{
+    console.log(error)
+  })
+.finally(()=>{
+  client.close()
+})
+}
 })
 
+//Modificar una prenda
+app.patch('/prendas',async (req,res)=>{
+  const id= req.params.id
+  const nuevosDatos= req.body
+  if(!nuevosDatos){
+res.status(400).send('Error en el formto de datos recibido')
+}
+const client=await connectToMongoDB()
+if(!client){
+  res.status(500).send ('Error al conectarse a Mongo DB')
+}
+const collection= client.db('prendasDB').collection('prendas')
+collection.updateOne({id:parseInt(id)},{$set : nuevosDatos})
+.then(()=>{
+  console.log('Prenda modificada')
+  res.status(200).send(nuevosDatos)
+})
+.catch((error)=>{
+  res.status(500).json({descripcion: 'error al modificar la prenda'})
+})
+.finally(()=>{
+client.close()
+})
 
+})
+// Eliminar una prenda
+app.delete('/prendas/:id', async (req, res) => {
+  const id= req.params.id
+  if (!req.params.id){
+    return res.status(400).send ('El formato de datos es erroneo o invalido')
+  }
+const client= await connectToMongoDB()
+if(!client){
+  return res.status(500).send('Error al conectarse a MongoDB')
+}
+client.connect()
+.then(()=>{
+  const collection= client.db('prendasDB').collection('prendas')
+  return collection.deleteOne({id:parseInt(id)})
+})
+.then((resultado)=>{
+  if(resultado.deletedCount===0){
+    res.status(404).send('No se encontro prenda con el ID proporcionado',id)
+  } else {
+    console.log('Prenda eliminada')
+    res.status(204).send()
+  }
+})
+.catch((error)=>{
+  console.error(error)
+  res.status(500).send('se produjo un error al intentar eliminar la prenda')
+})
+.finally(()=>{
+  client.close()
+})
+})
+
+// Inicializar el servidor
+app.listen(port, () => {
+  console.log(`Servidor escuchando en http://localhost:${PORT}`);
+});
